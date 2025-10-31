@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TokuMovie Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        /* Memastikan container player memiliki rasio 16:9 */
+        #playerContainer {
+            width: 100%;
+            aspect-ratio: 16 / 9; /* Rasio standar video */
+            background-color: black;
+            position: relative;
+        }
+        #playerContainer iframe, #playerContainer video {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        /* Memastikan thumbnail memiliki rasio yang sama */
+        .aspect-video {
+            aspect-ratio: 16 / 9;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+    <header class="bg-blue-600 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <a href="index.html" class="text-xl font-bold">← Toku Movie</a>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        <div class="bg-white rounded-lg shadow-xl overflow-hidden mb-6">
+            <div id="playerContainer">
+                <div id="loadingMessage" class="w-full h-full flex items-center justify-center text-white">Memuat Player...</div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white rounded-lg shadow-md border-t-4 border-blue-600">
+            <p id="videoCategory" class="text-sm font-semibold text-blue-600 uppercase mb-1">Memuat...</p>
+            <h1 id="videoTitle" class="text-2xl font-bold text-gray-800">Memuat...</h1>
+            <h2 id="videoSubtitle" class="text-lg text-gray-600 mb-2"></h2>
+            <p id="videoEpisode" class="text-md text-gray-500"></p>
+            <h2 id="sinopsis" class="text-lg text-gray-600 mb-2"></h2>
+            <h2 id="descripsi" class="text-lg text-gray-600 mb-2"></h2>
+        </div>
+        
+        <h2 class="text-xl font-bold text-gray-800 mt-8 mb-4 border-b pb-2">Episode Lainnya</h2>
+        <div id="relatedEpisodesContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4">
+            </div>
+
+    </main>
+    
+    <script>
+        const JSON_URL = './data/videos.json';
+        const playerContainer = document.getElementById('playerContainer');
+        const videoTitle = document.getElementById('videoTitle');
+        // ... (Elemen DOM lainnya di sini) ...
+        const videoSubtitle = document.getElementById('videoSubtitle');
+        const videoEpisode = document.getElementById('videoEpisode');
+        const videoCategory = document.getElementById('videoCategory');
+        const sinopsis = document.getElementById('sinopsis');
+        const descripsi = document.getElementById('descripsi');
+        const relatedEpisodesContainer = document.getElementById('relatedEpisodesContainer'); 
+
+        /** Mendapatkan ID Video dari URL (misal: ?id=zeroone_01) */
+        function getVideoIdFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id');
+        }
+
+        /** Mengambil data JSON dan mencari video yang sesuai */
+        async function loadVideo() {
+            const videoId = getVideoIdFromUrl();
+            if (!videoId) {
+                videoTitle.textContent = "Error: ID video tidak ditemukan.";
+                return;
+            }
+
+            try {
+                const response = await fetch(JSON_URL);
+                if (!response.ok) {
+                    throw new Error(`Gagal memuat file JSON: ${response.statusText}`);
+                }
+                const videos = await response.json();
+                
+                const videoData = videos.find(v => v.id === videoId);
+
+                if (videoData) {
+                    displayVideoDetails(videoData);
+                    
+                    // 🔑 LOGIKA BARU: Pilih pemutar berdasarkan URL
+                    if (videoData.url.includes('screenpal.com') || videoData.url.includes('streamable.com') || videoData.url.includes('youtube.com')) {
+                        playIframeVideo(videoData.url);
+                    } else if (videoData.url.endsWith('.m3u8')) {
+                        playHlsVideo(videoData.url);
+                    } else {
+                        // Default ke pemutar video HTML5 biasa
+                        playHlsVideo(videoData.url); 
+                    }
+                    
+                    // Logika Filter dan Tampilkan episode terkait (tetap sama)
+                    const relatedEpisodes = videos.filter(v => 
+                        v.category === videoData.category && 
+                        v.title === videoData.title &&
+                        v.id !== videoData.id 
+                    ).sort((a, b) => {
+                        const numA = parseInt(a.episode.replace('EPS ', ''));
+                        const numB = parseInt(b.episode.replace('EPS ', ''));
+                        return numA - numB;
+                    });
+
+                    renderRelatedEpisodes(relatedEpisodes);
+                } else {
+                    videoTitle.textContent = `Error: Video dengan ID "${videoId}" tidak ditemukan di JSON.`;
+                }
+
+            } catch (error) {
+                console.error("Kesalahan saat memuat data:", error);
+                videoTitle.textContent = `Error: Gagal memuat data video. Cek file videos.json.`;
+            }
+        }
+
+        /** FUNGSI BARU: Memainkan Video dengan IFRAME */
+        function playIframeVideo(videoUrl) {
+            playerContainer.innerHTML = ''; // Kosongkan pesan loading
+            
+            let embedUrl = videoUrl;
+            
+            // Konversi link YouTube ke format embed
+            if (videoUrl.includes('youtube.com/watch?v=')) {
+                const videoId = videoUrl.split('v=')[1].split('&')[0];
+                embedUrl = `https://www.youtube.com/embed/${videoId}`;
+            } 
+            // Konversi link Streamable ke format embed
+            else if (videoUrl.includes('streamable.com/')) {
+                const videoId = videoUrl.split('streamable.com/')[1];
+                embedUrl = `https://streamable.com/e/${videoId}`;
+            }
+            // Konversi link ScreenPal (ambil ID dari URL untuk embed)
+            else if (videoUrl.includes('screenpal.com/watch/')) {
+                const videoId = videoUrl.split('screenpal.com/watch/')[1];
+                // Menggunakan format embed player yang Anda berikan sebelumnya
+                embedUrl = `https://go.screenpal.com/player/${videoId}?width=100%&height=100%&ff=1&title=0`;
+            }
+
+            const iframe = document.createElement('iframe');
+            iframe.src = embedUrl;
+            iframe.setAttribute('allowfullscreen', 'true');
+            iframe.setAttribute('scrolling', 'no');
+            iframe.style.border = '0';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            
+            playerContainer.appendChild(iframe);
+        }
+
+        /** Memainkan video HLS atau HTML5 biasa */
+        function playHlsVideo(videoUrl) {
+            playerContainer.innerHTML = ''; // Kosongkan pesan loading
+
+            const video = document.createElement('video');
+            video.id = 'videoPlayer'; // Beri ID agar HLS.js bisa mengaitkan
+            video.setAttribute('controls', 'true');
+            video.setAttribute('autoplay', 'true');
+            
+            playerContainer.appendChild(video);
+
+            if (videoUrl.endsWith('.m3u8') && Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(videoUrl);
+                hls.attachMedia(video); // Kaitkan ke elemen <video> yang baru
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play();
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl') || video.canPlayType('video/mp4')) {
+                video.src = videoUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play();
+                });
+            } else {
+                playerContainer.innerHTML = '<div class="w-full h-full flex items-center justify-center text-white">Error: Browser atau URL tidak didukung.</div>';
+            }
+        }
+        
+        // FUNGSI renderRelatedEpisodes dan displayVideoDetails tetap sama
+        function renderRelatedEpisodes(episodes) {
+            if (episodes.length === 0) {
+                relatedEpisodesContainer.innerHTML = '<p class="text-gray-500">Tidak ada episode lain dalam serial ini.</p>';
+                return;
+            }
+
+            relatedEpisodesContainer.innerHTML = episodes.map(item => `
+                <a href="movieplayer.html?id=${item.id}" class="block bg-white rounded-lg shadow-md hover:shadow-lg transition transform hover:scale-[1.02]">
+                    <img src="${item.thumbnailUrl || 'https://via.placeholder.com/400x225?text=NO+THUMBNAIL'}" alt="${item.title} ${item.episode}" class="w-full h-auto object-cover rounded-t-lg aspect-video">
+                    <div class="p-3">
+                        <p class="text-sm font-semibold text-gray-700 leading-tight">${item.title}</p>
+                        <p class="text-xs font-bold text-blue-600">${item.episode}</p>
+                    </div>
+                </a>
+            `).join('');
+        }
+        
+        function displayVideoDetails(data) {
+            videoTitle.textContent = data.title;
+            videoSubtitle.textContent = data.subtitle;
+            videoEpisode.textContent = data.episode;
+            videoCategory.textContent = data.category;
+            sinopsis.textContent = data.sinopsis
+            descripsi.textContent = data.desc
+            document.title = `${data.title} ${data.episode} | TokuMovie`;
+        }
+
+
+        // Jalankan saat halaman dimuat
+        document.addEventListener('DOMContentLoaded', loadVideo);
+    </script>
+</body>
+</html>
