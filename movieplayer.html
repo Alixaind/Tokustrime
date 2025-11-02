@@ -97,7 +97,8 @@
                     displayVideoDetails(videoData);
                     
                     // 🔑 LOGIKA BARU: Pilih pemutar berdasarkan URL
-                    if (videoData.url.includes('screenpal.com') || videoData.url.includes('streamable.com') || videoData.url.includes('youtube.com')) {
+                    // Menambahkan 'jumpshare.com' dan menghapus 'streamable.com'
+                    if (videoData.url.includes('screenpal.com') || videoData.url.includes('jumpshare.com') || videoData.url.includes('youtube.com')) {
                         playIframeVideo(videoData.url);
                     } else if (videoData.url.endsWith('.m3u8')) {
                         playHlsVideo(videoData.url);
@@ -139,17 +140,15 @@
                 const videoId = videoUrl.split('v=')[1].split('&')[0];
                 embedUrl = `https://www.youtube.com/embed/${videoId}`;
             } 
-            // Konversi link Streamable ke format embed
-            else if (videoUrl.includes('streamable.com/')) {
-                const videoId = videoUrl.split('streamable.com/')[1];
-                embedUrl = `https://streamable.com/e/${videoId}`;
-            }
+            // BLOK STREAMABLE DIHAPUS
             // Konversi link ScreenPal (ambil ID dari URL untuk embed)
             else if (videoUrl.includes('screenpal.com/watch/')) {
                 const videoId = videoUrl.split('screenpal.com/watch/')[1];
                 // Menggunakan format embed player yang Anda berikan sebelumnya
                 embedUrl = `https://go.screenpal.com/player/${videoId}?width=100%&height=100%&ff=1&title=0`;
             }
+            // Link Jumpshare (https://jumpshare.com/embed/...) sudah dalam format embed,
+            // jadi akan langsung digunakan melalui 'let embedUrl = videoUrl;'
 
             const iframe = document.createElement('iframe');
             iframe.src = embedUrl;
